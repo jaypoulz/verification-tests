@@ -141,21 +141,62 @@ Given /^I update #{QUOTED} slave image for jenkins #{NUMBER} server$/ do |slave_
   step 'the step should succeed'
 end
 
-Given /^I update #{QUOTED} agent image to use slave image$/ do |agent_name|
+Given /^I have a jenkins server with above 40 cluster$/ do
 
-  step 'I store master major version in the clipboard'
-  if agent_name == 'maven'
-    step %Q/I perform the :jenkins_update_cloud_image web action with:/, table(%{
-      | currentimgval | openshift3/jenkins-agent-maven-35-rhel7                                                  |
-      | cloudimage    | <%= product_docker_repo %>openshift3/jenkins-slave-maven-rhel7:v<%= cb.master_version %> |
+  last_startup_check = monotonic_seconds
+  if !user.password?
+    step %Q/I run the :new_app client command with:/, table(%{
+      | p        | ENABLE_OAUTH=false |
+      | template | jenkins-persistent |
       })
-  else agent_name == 'nodejs'
-    step %Q/I perform the :jenkins_update_cloud_image web action with:/, table(%{
-      | currentimgval | openshift3/jenkins-agent-nodejs-8-rhel7                                                   |
-      | cloudimage    | <%= product_docker_repo %>openshift3/jenkins-slave-nodejs-rhel7:v<%= cb.master_version %> |
+    step 'the step should succeed'
+  else
+    step %Q/I run the :new_app client command with:/, table(%{
+      | template | jenkins-persistent |
       })
-  end 
+    step 'the step should succeed'
+  end
 
-  step 'the step should succeed'
+  step 'I wait for the "jenkins" service to become ready up to 600 seconds'
+  cb.jenkins_svc = service
+  cache_resources *service.pods, route("jenkins", service("jenkins"))
+  cb.jenkins_pod = pod
+  cb.jenkins_route = route
+  cb.jenkins_dns = cb.jenkins_route.dns
+  cb.jenkins_major_version = 2
+
+  timeout = 600
+  wait_string = "Finished Download metadata."
+
+  started = wait_for(timeout) {
+    since = monotonic_seconds - last_startup_check
+    res = user.cli_exec(
+      :logs,
+      resource_name: cb.jenkins_pod.name,
+      since: "#{since.to_i + 5}s",
+      _quiet: true
+    )
+    last_startup_check += since
+    res[:response].include? wait_string
+  }
+  if started
+    logger.info "Jenkins log line found: #{wait_string}"
+  else
+    raise "Jenkins failed to start within #{timeout} seconds"
+  end
 end
 
+Given /^I log into jenkins with above 40 cluster$/ do
+  if user.password?
+    step %Q/I perform the :jenkins_multi_oauth_login web action with:/, table(%{
+      | username | <%= user.name %>     |
+      | password | <%= user.password %> |
+      })
+  else
+    step %Q/I perform the :jenkins_standard_login web action with:/, table(%{
+      | username | admin    |
+      | password | password |
+      })
+  end
+  step 'the step should succeed'
+end
