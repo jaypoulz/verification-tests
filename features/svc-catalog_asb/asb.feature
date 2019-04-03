@@ -157,3 +157,4 @@ Feature: Ansible-service-broker related scenarios
     When I run the :describe client command with:
       | resource | clusterservicebroker/template-service-broker  |
     Then the output should match "Message:\s+Successfully fetched catalog entries from broker"
+
